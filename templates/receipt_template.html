@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Digital Receipt - {{ receipt.receipt_number }}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        
+        .receipt-container {
+            max-width: 600px;
+            margin: 20px auto;
+            background: white;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .receipt-header {
+            text-align: center;
+            border-bottom: 2px solid #ff6b35;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .receipt-header h1 {
+            color: #ff6b35;
+            font-size: 28px;
+            margin-bottom: 5px;
+        }
+        
+        .receipt-header p {
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .shop-info {
+            background-color: #f9f9f9;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .shop-info h3 {
+            color: #ff6b35;
+            font-size: 16px;
+            margin-bottom: 5px;
+        }
+        
+        .shop-info p {
+            font-size: 13px;
+            color: #666;
+            line-height: 1.6;
+        }
+        
+        .receipt-number {
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+            margin-bottom: 20px;
+            padding: 10px 0;
+            border-top: 1px solid #eee;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .receipt-number span {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+        }
+        
+        .customer-info {
+            background-color: #f9f9f9;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            font-size: 13px;
+        }
+        
+        .customer-info h4 {
+            color: #ff6b35;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+        
+        .customer-info p {
+            margin-bottom: 3px;
+            color: #666;
+        }
+        
+        .order-items {
+            width: 100%;
+            margin-bottom: 20px;
+        }
+        
+        .order-items h4 {
+            color: #ff6b35;
+            font-size: 14px;
+            margin-bottom: 10px;
+            border-bottom: 2px solid #ff6b35;
+            padding-bottom: 5px;
+        }
+        
+        .items-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+        }
+        
+        .items-table th {
+            background-color: #ff6b35;
+            color: white;
+            padding: 8px;
+            text-align: left;
+            font-weight: bold;
+        }
+        
+        .items-table td {
+            padding: 8px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .items-table tr:hover {
+            background-color: #f9f9f9;
+        }
+        
+        .item-details {
+            font-size: 11px;
+            color: #999;
+            margin-top: 2px;
+        }
+        
+        .price-section {
+            margin-bottom: 20px;
+        }
+        
+        .price-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            font-size: 13px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .price-row.total {
+            border: none;
+            background-color: #f9f9f9;
+            padding: 12px;
+            margin: 0 -12px;
+            font-weight: bold;
+            font-size: 14px;
+            color: #ff6b35;
+        }
+        
+        .price-label {
+            color: #666;
+        }
+        
+        .payment-info {
+            background-color: #f0f8ff;
+            padding: 15px;
+            border-radius: 5px;
+            border-left: 4px solid #ff6b35;
+            margin-bottom: 20px;
+            font-size: 13px;
+        }
+        
+        .payment-info h4 {
+            color: #ff6b35;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+        
+        .payment-info p {
+            color: #666;
+            margin-bottom: 3px;
+        }
+        
+        .order-status {
+            background-color: #e8f5e9;
+            padding: 12px;
+            border-radius: 5px;
+            text-align: center;
+            margin-bottom: 20px;
+            font-size: 13px;
+        }
+        
+        .order-status .status-badge {
+            display: inline-block;
+            background-color: #ff6b35;
+            color: white;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-weight: bold;
+        }
+        
+        .footer {
+            text-align: center;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+            font-size: 12px;
+            color: #999;
+        }
+        
+        .footer p {
+            margin-bottom: 5px;
+        }
+        
+        .thank-you {
+            color: #ff6b35;
+            font-weight: bold;
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+        
+        @media print {
+            body {
+                background: white;
+            }
+            .receipt-container {
+                box-shadow: none;
+                margin: 0;
+                padding: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="receipt-container">
+        <!-- Header -->
+        <div class="receipt-header">
+            <h1>📄 DIGITAL RECEIPT</h1>
+            <p>Printora - Professional Printing Services</p>
+        </div>
+        
+        <!-- Shop Information -->
+        <div class="shop-info">
+            <h3>{{ order.print_shop.name }}</h3>
+            <p>
+                {{ order.print_shop.address }}<br>
+                {{ order.print_shop.city }}, {{ order.print_shop.pincode }}<br>
+                📞 {{ order.print_shop.phone }}
+            </p>
+        </div>
+        
+        <!-- Receipt Number and Dates -->
+        <div class="receipt-number">
+            <span>
+                <strong>Receipt #:</strong> {{ receipt.receipt_number }}
+            </span>
+            <span style="text-align: right;">
+                <strong>Date:</strong> {{ receipt.created_at|date:"d M Y" }}
+            </span>
+        </div>
+        
+        <!-- Customer Information -->
+        <div class="customer-info">
+            <h4>👤 Customer Details</h4>
+            <p><strong>Name:</strong> {{ order.user.get_full_name|default:order.user.email }}</p>
+            <p><strong>Email:</strong> {{ order.user.email }}</p>
+            <p><strong>Order ID:</strong> {{ order.order_number }}</p>
+            {% if order.user.profile.phone %}
+                <p><strong>Phone:</strong> {{ order.user.profile.phone }}</p>
+            {% endif %}
+        </div>
+        
+        <!-- Order Items -->
+        <div class="order-items">
+            <h4>📋 Order Details</h4>
+            <table class="items-table">
+                <thead>
+                    <tr>
+                        <th>Item</th>
+                        <th>Qty</th>
+                        <th>Unit Price</th>
+                        <th>Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in order.items.all %}
+                    <tr>
+                        <td>
+                            <strong>{{ item.service.name }}</strong>
+                            <div class="item-details">
+                                📄 Pages: {{ item.pages }} | Copies: {{ item.copies }}
+                                {% if item.paper_type %}
+                                    | Paper: {{ item.paper_type|upper }}
+                                {% endif %}
+                                {% if item.color_type %}
+                                    | Color: {{ item.color_type|upper }}
+                                {% endif %}
+                                {% if item.binding_option %}
+                                    | Binding: {{ item.binding_option.binding_type }}
+                                {% endif %}
+                            </div>
+                        </td>
+                        <td>{{ item.copies }}</td>
+                        <td>₹{{ item.price_per_unit }}</td>
+                        <td><strong>₹{{ item.total_price }}</strong></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- Price Summary -->
+        <div class="price-section">
+            <div class="price-row">
+                <span class="price-label">Subtotal:</span>
+                <span>₹{{ receipt.subtotal }}</span>
+            </div>
+            {% if receipt.tax > 0 %}
+            <div class="price-row">
+                <span class="price-label">Tax (GST 18%):</span>
+                <span>₹{{ receipt.tax }}</span>
+            </div>
+            {% endif %}
+            {% if receipt.discount > 0 %}
+            <div class="price-row" style="color: green;">
+                <span class="price-label">Discount:</span>
+                <span>-₹{{ receipt.discount }}</span>
+            </div>
+            {% endif %}
+            <div class="price-row total">
+                <span>TOTAL AMOUNT PAID:</span>
+                <span>₹{{ receipt.total }}</span>
+            </div>
+        </div>
+        
+        <!-- Order Status -->
+        <div class="order-status">
+            <p style="margin-bottom: 8px; color: #666;">Current Order Status</p>
+            <span class="status-badge">
+                {% if order.status == 'placed' %}
+                    ⏳ ORDER PLACED
+                {% elif order.status == 'accepted' %}
+                    ✅ ACCEPTED
+                {% elif order.status == 'printing' %}
+                    🖨️ PRINTING IN PROGRESS
+                {% elif order.status == 'ready_for_pickup' %}
+                    📦 READY FOR PICKUP
+                {% elif order.status == 'completed' %}
+                    ✔️ COMPLETED
+                {% elif order.status == 'cancelled' %}
+                    ❌ CANCELLED
+                {% endif %}
+            </span>
+        </div>
+        
+        <!-- Payment Information -->
+        <div class="payment-info">
+            <h4>💳 Payment Information</h4>
+            <p><strong>Payment Method:</strong> {{ receipt.payment_method|title }}</p>
+            <p><strong>Payment Status:</strong> 
+                {% if order.payment_status == 'completed' %}
+                    <span style="color: green; font-weight: bold;">✓ PAID</span>
+                {% else %}
+                    <span style="color: red; font-weight: bold;">{{ order.payment_status|upper }}</span>
+                {% endif %}
+            </p>
+            {% if order.payment.razorpay_payment_id %}
+            <p><strong>Transaction ID:</strong> {{ order.payment.razorpay_payment_id }}</p>
+            {% endif %}
+        </div>
+        
+        <!-- Notes -->
+        {% if order.notes %}
+        <div style="background-color: #fff9c4; padding: 12px; border-radius: 5px; margin-bottom: 20px; font-size: 13px; border-left: 4px solid #fbc02d;">
+            <h4 style="color: #f57f17; margin-bottom: 8px;">📝 Special Instructions</h4>
+            <p>{{ order.notes }}</p>
+        </div>
+        {% endif %}
+        
+        <!-- Footer -->
+        <div class="footer">
+            <p class="thank-you">Thank you for using Printora! 🙏</p>
+            <p>For any queries, contact us at our shop or email support@printora.com</p>
+            <p>Receipt Generated on: {{ receipt.created_at|date:"d M Y, H:i" }}</p>
+            <p style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #eee;">
+                This is a computer-generated receipt and is valid without signature.
+            </p>
+        </div>
+    </div>
+</body>
+</html>
