@@ -50,7 +50,7 @@ class PrintShop(models.Model):
 
     name = models.CharField(max_length=255)
     address = models.TextField()
-    logo = models.ImageField(upload_to='shop_logos/')
+    logo = models.ImageField(upload_to='shop_logos/', null=True, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='open')
     
     opening_time = models.TimeField()
@@ -68,7 +68,7 @@ class Service(models.Model):
     title = models.CharField(max_length=100)
     description = models.CharField(max_length=255)
     detailed_info = models.TextField(blank=True)
-    icon = models.ImageField(upload_to='service_icons/')
+    icon = models.ImageField(upload_to='service_icons/', null=True, blank=True)
     theme_color = models.CharField(max_length=7, help_text="Hex code e.g. #FF8C00")
     
     base_price_label = models.CharField(max_length=50)
@@ -139,7 +139,6 @@ class Order(models.Model):
 
 
 # --- 6. RAZORPAY INTEGRATION ---
-
 class Payment(models.Model):
     PAYMENT_STATUS = [
         ('PENDING', 'Pending'),
@@ -147,14 +146,18 @@ class Payment(models.Model):
         ('FAILED', 'Failed'),
     ]
 
-    order = models.OneToOneField(Order, on_delete=models.CASCADE, related_name='payment')
-    razorpay_order_id = models.CharField(max_length=100, unique=True)
-    razorpay_payment_id = models.CharField(max_length=100, blank=True, null=True)
-    razorpay_signature = models.CharField(max_length=255, blank=True, null=True)
+    order = models.OneToOneField('Order', on_delete=models.CASCADE, related_name='payment')
+    
+    # PhonePe specific fields
+    merchant_transaction_id = models.CharField(max_length=100, unique=True)
+    phonepe_transaction_id = models.CharField(max_length=100, blank=True, null=True)
     
     status = models.CharField(max_length=20, choices=PAYMENT_STATUS, default='PENDING')
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
     payment_method = models.CharField(max_length=50, default='UPI')
-    captured_at = models.DateTimeField(auto_now_add=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"Payment for {self.order.pickup_token} - {self.status}"
+        return f"Pay {self.merchant_transaction_id} - {self.status}"
