@@ -18,7 +18,7 @@ class DocumentInline(admin.StackedInline):
 class PaymentInline(admin.StackedInline):
     model = Payment
     can_delete = False
-    readonly_fields = ('razorpay_order_id', 'razorpay_payment_id', 'razorpay_signature', 'captured_at')
+    readonly_fields = ('merchant_transaction_id', 'phonepe_order_id', 'phonepe_transaction_id', 'status', 'amount', 'payment_method', 'created_at', 'updated_at')
 
 # --- MODEL ADMINS ---
 
@@ -60,32 +60,9 @@ class DocumentAdmin(admin.ModelAdmin):
     list_filter = ('color_mode', 'sides', 'paper_size')
     readonly_fields = ('created_at',)
 
-@admin.register(Order)
-class OrderAdmin(admin.ModelAdmin):
-    list_display = ('pickup_token', 'user', 'shop', 'status', 'total_amount', 'is_paid', 'ordered_at')
-    list_filter = ('status', 'is_paid', 'shop', 'ordered_at')
-    search_fields = ('pickup_token', 'user__email')
-    readonly_fields = ('pickup_token', 'ordered_at')
-    inlines = [PaymentInline]
-    
-    # Custom actions to update status quickly
-    actions = ['mark_as_printing', 'mark_as_ready', 'mark_as_completed']
-
-    def mark_as_printing(self, request, queryset):
-        queryset.update(status='PRINTING')
-    mark_as_printing.short_description = "Change status to Printing"
-
-    def mark_as_ready(self, request, queryset):
-        queryset.update(status='READY')
-    mark_as_ready.short_description = "Change status to Ready"
-
-    def mark_as_completed(self, request, queryset):
-        queryset.update(status='COMPLETED')
-    mark_as_completed.short_description = "Change status to Completed"
-
 @admin.register(Payment)
 class PaymentAdmin(admin.ModelAdmin):
-    list_display = ('razorpay_order_id', 'order', 'status', 'payment_method', 'captured_at')
+    list_display = ('merchant_transaction_id', 'phonepe_order_id', 'order', 'status', 'payment_method', 'amount', 'created_at', 'updated_at')
     list_filter = ('status', 'payment_method')
-    search_fields = ('razorpay_order_id', 'razorpay_payment_id')
-    readonly_fields = ('captured_at',)
+    search_fields = ('merchant_transaction_id', 'phonepe_order_id', 'phonepe_transaction_id')
+    readonly_fields = ('created_at', 'updated_at')

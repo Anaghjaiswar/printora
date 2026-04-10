@@ -10,3 +10,4 @@ razorpay
 pillow
 weasyprint
 pypdf
+phonepe-pg-sdk-python

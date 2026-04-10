@@ -1,17 +1,94 @@
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import status, permissions, viewsets
-from rest_framework.authtoken.models import Token
-from django.contrib.auth import authenticate
-from django.conf import settings
-from .serializers import UserSerializer
-from rest_framework import viewsets
-from .models import PrintShop, Service, Document, Order, Payment
-from .serializers import PrintShopSerializer, ServiceSerializer, DocumentSerializer
-from rest_framework.parsers import MultiPartParser, FormParser
-import uuid
-import base64
 import json
+import logging
+import uuid
+from decimal import Decimal
+
+from django.contrib.auth import authenticate
+from django.db import transaction
+from phonepe.sdk.pg.common.exceptions import PhonePeException #type:ignore
+from rest_framework import permissions, status, viewsets
+from rest_framework.authtoken.models import Token
+from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+from .models import Document, Order, Payment, PrintShop, Service
+from .phonepe_service import (
+    build_meta_info,
+    create_sdk_order as phonepe_create_sdk_order,
+    get_order_status as phonepe_get_order_status,
+    serialize_phonepe_value,
+    to_paise,
+    validate_callback,
+)
+from .serializers import DocumentSerializer, PrintShopSerializer, ServiceSerializer, UserSerializer
+
+
+logger = logging.getLogger(__name__)
+
+
+def _parse_document_ids(raw_document_ids):
+    if isinstance(raw_document_ids, list):
+        return [int(document_id) for document_id in raw_document_ids if str(document_id).isdigit()]
+
+    if isinstance(raw_document_ids, str):
+        try:
+            parsed_value = json.loads(raw_document_ids)
+        except json.JSONDecodeError:
+            parsed_value = [value.strip() for value in raw_document_ids.split(',') if value.strip()]
+
+        if isinstance(parsed_value, list):
+            return [int(document_id) for document_id in parsed_value if str(document_id).isdigit()]
+
+    return []
+
+
+def _create_payment_for_order(order):
+    merchant_transaction_id = f"PO-{order.id}-{uuid.uuid4().hex[:8].upper()}"
+    payment = Payment.objects.create(
+        order=order,
+        merchant_transaction_id=merchant_transaction_id,
+        amount=order.total_amount,
+    )
+
+    phonepe_amount = to_paise(order.total_amount)
+    meta_info = build_meta_info(
+        order_id=order.id,
+        user_id=order.user_id,
+        shop_id=order.shop_id,
+        document_count=order.documents.count(),
+    )
+
+    try:
+        phonepe_response = phonepe_create_sdk_order(
+            merchant_order_id=merchant_transaction_id,
+            amount_paise=phonepe_amount,
+            meta_info=meta_info,
+            disable_payment_retry=True,
+        )
+    except PhonePeException as exc:
+        payment.status = 'FAILED'
+        payment.save(update_fields=['status', 'updated_at'])
+        raise RuntimeError(f'PhonePe API error: {exc.message}') from exc
+
+    payment.phonepe_order_id = getattr(phonepe_response, 'order_id', None) or getattr(phonepe_response, 'orderId', None)
+    payment.save(update_fields=['phonepe_order_id', 'updated_at'])
+
+    response_data = {
+        'order_id': order.id,
+        'pickup_token': order.pickup_token,
+        'merchant_order_id': merchant_transaction_id,
+        'phonepe_order_id': payment.phonepe_order_id,
+        'total_amount': str(order.total_amount),
+    }
+
+    response_data.update({
+        'token': getattr(phonepe_response, 'token', None),
+        'state': getattr(phonepe_response, 'state', None),
+        'expire_at': getattr(phonepe_response, 'expire_at', None) or getattr(phonepe_response, 'expireAt', None),
+    })
+
+    return response_data
 
 class SignupView(APIView):
     permission_classes = [permissions.AllowAny]
@@ -102,12 +179,12 @@ class DocumentUploadView(APIView):
     
 
 
-class CreateOrderView(APIView):
+class CreateSdkOrderView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
         user = request.user
-        document_ids = request.data.get('document_ids', [])
+        document_ids = _parse_document_ids(request.data.get('document_ids', []))
         shop_id = request.data.get('shop_id')
 
         if not document_ids or not shop_id:
@@ -115,60 +192,58 @@ class CreateOrderView(APIView):
 
         try:
             shop = PrintShop.objects.get(id=shop_id)
-            documents = Document.objects.filter(id__in=document_ids, user=user)
-            
-            # 1. Calculate Total Amount
-            total_amount = 0
-            for doc in documents:
-                # Get price based on color mode
-                rate = doc.service.color_price if doc.color_mode == 'COLOR' else doc.service.bw_price
-                doc_total = rate * doc.page_count * doc.copies
-                total_amount += doc_total
+            documents = list(Document.objects.filter(id__in=document_ids, user=user).select_related('service'))
 
-            # 2. Generate Pickup Token (e.g., P-random)
+            if len(documents) != len(set(document_ids)):
+                return Response({"error": "One or more documents are invalid or do not belong to the current user"}, status=status.HTTP_400_BAD_REQUEST)
+
+            total_amount = Decimal('0.00')
+            for doc in documents:
+                if not doc.service:
+                    return Response({"error": f"Document {doc.id} does not have a valid service"}, status=status.HTTP_400_BAD_REQUEST)
+                rate = doc.service.color_price if doc.color_mode == 'COLOR' else doc.service.bw_price
+                total_amount += Decimal(rate) * doc.page_count * doc.copies
+
+            if total_amount <= 0:
+                return Response({"error": "Order amount must be greater than zero"}, status=status.HTTP_400_BAD_REQUEST)
+
             pickup_token = f"P-{str(uuid.uuid4().int)[:3]}"
 
-            # 3. Create Order
-            order = Order.objects.create(
-                user=user,
-                shop=shop,
-                total_amount=total_amount,
-                pickup_token=pickup_token
-            )
-            order.documents.set(documents)
+            with transaction.atomic():
+                order = Order.objects.create(
+                    user=user,
+                    shop=shop,
+                    total_amount=total_amount,
+                    pickup_token=pickup_token,
+                )
+                order.documents.set(documents)
 
-            # 4. Initiate PhonePe Payment
-            merchant_transaction_id = f"MT{uuid.uuid4().hex[:10].upper()}"
-            
-            # PhonePe Payload
-            payload = {
-                "merchantId": settings.PHONEPE_MERCHANT_ID,
-                "merchantTransactionId": merchant_transaction_id,
-                "merchantUserId": str(user.id),
-                "amount": int(total_amount * 100), # Amount in paise
-                "redirectUrl": f"https://yourdomain.com/payment-status/{merchant_transaction_id}/",
-                "redirectMode": "REDIRECT",
-                "callbackUrl": "https://your-api-domain.com/api/payment/webhook/",
-                "paymentInstrument": {"type": "PAY_PAGE"}
-            }
+            response_data = _create_payment_for_order(order)
+            response_data['total_amount'] = str(total_amount)
 
-            # Save Payment record as Pending
-            Payment.objects.create(
-                order=order,
-                merchant_transaction_id=merchant_transaction_id,
-                amount=total_amount
-            )
+            return Response(response_data, status=status.HTTP_201_CREATED)
 
-            # Note: You'll need to implement the PhonePe SHA256 header logic here
-            # For now, returning order details and a mock payment link
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class PhonePeOrderStatusView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, merchant_order_id):
+        try:
+            response = phonepe_get_order_status(merchant_order_id, details=request.query_params.get('details', 'false').lower() == 'true')
             return Response({
-                "order_id": order.id,
-                "total_amount": total_amount,
-                "pickup_token": pickup_token,
-                "merchant_transaction_id": merchant_transaction_id,
-                "payment_url": "https://mercuri.phonepe.com/transact/pg?token=..." # This comes from PhonePe API
-            }, status=status.HTTP_201_CREATED)
-
+                'merchant_order_id': merchant_order_id,
+                'order_id': getattr(response, 'order_id', None) or getattr(response, 'orderId', None),
+                'state': getattr(response, 'state', None),
+                'expire_at': getattr(response, 'expire_at', None) or getattr(response, 'expireAt', None),
+                'amount': getattr(response, 'amount', None),
+                'meta_info': serialize_phonepe_value(getattr(response, 'meta_info', None) or getattr(response, 'metaInfo', None)),
+                'error_code': getattr(response, 'error_code', None) or getattr(response, 'errorCode', None),
+                'detailed_error_code': getattr(response, 'detailed_error_code', None) or getattr(response, 'detailedErrorCode', None),
+                'payment_details': serialize_phonepe_value(getattr(response, 'payment_details', None) or getattr(response, 'paymentDetails', None)),
+            }, status=status.HTTP_200_OK)
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -176,27 +251,80 @@ class PhonePeWebhookView(APIView):
     permission_classes = [permissions.AllowAny] # PhonePe calls this
 
     def post(self, request):
-        # 1. Decode PhonePe Response (Base64)
-        response_data = request.data.get('response')
-        decoded_response = json.loads(base64.b64decode(response_data).decode('utf-8'))
-        
-        # 2. Verify check-sum (Mandatory for security)
-        # Check PhonePe docs for signature verification logic
-
-        merchant_id = decoded_response.get('data', {}).get('merchantId')
-        transaction_id = decoded_response.get('data', {}).get('merchantTransactionId')
-        success = decoded_response.get('success')
+        authorization_header = request.headers.get('Authorization', '')
+        response_body = request.body.decode('utf-8')
 
         try:
-            payment = Payment.objects.get(merchant_transaction_id=transaction_id)
-            if success:
-                payment.status = 'SUCCESS'
-                payment.order.is_paid = True
-                payment.order.save()
-            else:
-                payment.status = 'FAILED'
-            
-            payment.save()
-            return Response({"status": "received"}, status=status.HTTP_200_OK)
+            callback_response = validate_callback(authorization_header, response_body)
+            callback_event = getattr(callback_response, 'event', None) or getattr(callback_response, 'type', None)
+            payload = getattr(callback_response, 'payload', None)
+
+            merchant_order_id = (
+                getattr(payload, 'original_merchant_order_id', None)
+                or getattr(payload, 'merchant_order_id', None)
+                or getattr(payload, 'originalMerchantOrderId', None)
+            )
+            phonepe_order_id = getattr(payload, 'order_id', None) or getattr(payload, 'orderId', None)
+            payment_state = getattr(payload, 'state', None)
+            payment_details = getattr(payload, 'payment_details', None) or getattr(payload, 'paymentDetails', None)
+
+            if not merchant_order_id:
+                logger.warning('PhonePe webhook payload missing merchant order id', extra={'event': callback_event})
+                return Response({
+                    "status": "ignored",
+                    "reason": "missing_merchant_order_id",
+                    "event": callback_event,
+                }, status=status.HTTP_200_OK)
+
+            with transaction.atomic():
+                payment = Payment.objects.select_related('order').get(merchant_transaction_id=merchant_order_id)
+
+                payment.phonepe_order_id = phonepe_order_id or payment.phonepe_order_id
+
+                if payment_state == 'COMPLETED' or callback_event == 'checkout.order.completed':
+                    payment.status = 'SUCCESS'
+                    payment.order.is_paid = True
+                    payment.order.save(update_fields=['is_paid'])
+
+                    if payment_details:
+                        first_attempt = payment_details[0]
+                        payment.phonepe_transaction_id = getattr(first_attempt, 'transaction_id', None) or getattr(first_attempt, 'transactionId', None) or payment.phonepe_transaction_id
+                else:
+                    payment.status = 'FAILED'
+
+                payment.save(update_fields=['phonepe_order_id', 'phonepe_transaction_id', 'status', 'updated_at'])
+
+            return Response({
+                'status': 'received',
+                'event': callback_event,
+                'merchant_order_id': merchant_order_id,
+                'phonepe_order_id': phonepe_order_id,
+            }, status=status.HTTP_200_OK)
+
         except Payment.DoesNotExist:
-            return Response({"error": "Payment not found"}, status=status.HTTP_404_NOT_FOUND)
+            logger.warning('PhonePe webhook payment not found', exc_info=True)
+            return Response({
+                "status": "ignored",
+                "reason": "payment_not_found",
+            }, status=status.HTTP_200_OK)
+        except ValueError as exc:
+            logger.warning('PhonePe webhook validation error: %s', str(exc), exc_info=True)
+            return Response({
+                "status": "ignored",
+                "reason": "validation_error",
+                "message": str(exc),
+            }, status=status.HTTP_200_OK)
+        except PhonePeException as exc:
+            logger.warning('PhonePe webhook SDK error: %s', exc.message, exc_info=True)
+            return Response({
+                "status": "ignored",
+                "reason": "phonepe_sdk_error",
+                "message": exc.message,
+            }, status=status.HTTP_200_OK)
+        except Exception as exc:
+            logger.exception('Unexpected PhonePe webhook error: %s', str(exc))
+            return Response({
+                "status": "ignored",
+                "reason": "unexpected_error",
+                "message": str(exc),
+            }, status=status.HTTP_200_OK)

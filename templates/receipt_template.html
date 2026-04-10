@@ -369,8 +369,14 @@
                     <span style="color: red; font-weight: bold;">{{ order.payment_status|upper }}</span>
                 {% endif %}
             </p>
-            {% if order.payment.razorpay_payment_id %}
-            <p><strong>Transaction ID:</strong> {{ order.payment.razorpay_payment_id }}</p>
+            {% if order.payment.merchant_transaction_id %}
+            <p><strong>Merchant Order ID:</strong> {{ order.payment.merchant_transaction_id }}</p>
+            {% endif %}
+            {% if order.payment.phonepe_order_id %}
+            <p><strong>PhonePe Order ID:</strong> {{ order.payment.phonepe_order_id }}</p>
+            {% endif %}
+            {% if order.payment.phonepe_transaction_id %}
+            <p><strong>Transaction ID:</strong> {{ order.payment.phonepe_transaction_id }}</p>
             {% endif %}
         </div>
         

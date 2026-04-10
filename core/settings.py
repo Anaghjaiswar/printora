@@ -1,5 +1,6 @@
 from pathlib import Path
 import os
+from corsheaders.defaults import default_headers #type:ignore
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -7,7 +8,7 @@ load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = os.environ.get('SECRET_KEY')
 DEBUG = os.environ.get('DEBUG', 'False') == 'True'
-ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '').split(',')
+ALLOWED_HOSTS = [host.strip() for host in os.environ.get('ALLOWED_HOSTS', '').split(',') if host.strip()]
 
 
 INSTALLED_APPS = [
@@ -17,6 +18,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'corsheaders',
     'rest_framework',
     'rest_framework.authtoken',
     'App'
@@ -25,6 +27,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -74,6 +77,20 @@ AUTH_PASSWORD_VALIDATORS = [
 
 AUTH_USER_MODEL = 'App.User'
 PHONEPE_MERCHANT_ID = os.environ.get('PHONEPE_MERCHANT_ID')
+FRONTEND_URL = os.environ.get('FRONTEND_URL')
+BACKEND_URL = os.environ.get('BACKEND_URL')
+PHONEPE_API_URL = os.environ.get('PHONEPE_API_URL')
+PHONEPE_SALT_KEY = os.environ.get('PHONEPE_SALT_KEY')
+PHONEPE_SALT_INDEX = os.environ.get('PHONEPE_SALT_INDEX')
+PHONEPE_CLIENT_ID = os.environ.get('PHONEPE_CLIENT_ID', PHONEPE_MERCHANT_ID)
+PHONEPE_CLIENT_SECRET = os.environ.get('PHONEPE_CLIENT_SECRET', PHONEPE_SALT_KEY)
+PHONEPE_CLIENT_VERSION = os.environ.get('PHONEPE_CLIENT_VERSION', '1')
+PHONEPE_AUTH_URL = os.environ.get('PHONEPE_AUTH_URL', f"{PHONEPE_API_URL}/v1/oauth/token")
+PHONEPE_PAY_URL = os.environ.get('PHONEPE_PAY_URL', f"{PHONEPE_API_URL}/checkout/v2/pay")
+PHONEPE_CALLBACK_USERNAME = os.environ.get('PHONEPE_CALLBACK_USERNAME', '')
+PHONEPE_CALLBACK_PASSWORD = os.environ.get('PHONEPE_CALLBACK_PASSWORD', '')
+PHONEPE_ENV = os.environ.get('PHONEPE_ENV', 'SANDBOX')
+
 
 
 LANGUAGE_CODE = 'en-us'
@@ -126,10 +143,9 @@ REST_FRAMEWORK = {
 # ===================== CORS CONFIGURATION =====================
 CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:3000,http://localhost:8000').split(',')
 CORS_ALLOW_CREDENTIALS = True
-
-# ===================== RAZORPAY CONFIGURATION =====================
-RAZORPAY_KEY_ID = os.environ.get('RAZORPAY_KEY_ID')
-RAZORPAY_KEY_SECRET = os.environ.get('RAZORPAY_KEY_SECRET')
+CORS_ALLOW_HEADERS = list(default_headers) + [
+    'ngrok-skip-browser-warning',
+]
 
 # ===================== FILE UPLOAD CONFIGURATION =====================
 FILE_UPLOAD_MAX_MEMORY_SIZE = 52428800  # 50MB

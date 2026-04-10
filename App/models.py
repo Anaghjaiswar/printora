@@ -138,7 +138,7 @@ class Order(models.Model):
         return f"{self.pickup_token} - {self.status}"
 
 
-# --- 6. RAZORPAY INTEGRATION ---
+# --- 6. PHONEPE INTEGRATION ---
 class Payment(models.Model):
     PAYMENT_STATUS = [
         ('PENDING', 'Pending'),
@@ -150,6 +150,7 @@ class Payment(models.Model):
     
     # PhonePe specific fields
     merchant_transaction_id = models.CharField(max_length=100, unique=True)
+    phonepe_order_id = models.CharField(max_length=100, blank=True, null=True)
     phonepe_transaction_id = models.CharField(max_length=100, blank=True, null=True)
     
     status = models.CharField(max_length=20, choices=PAYMENT_STATUS, default='PENDING')
