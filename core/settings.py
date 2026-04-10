@@ -189,3 +189,10 @@ os.makedirs(LOGS_DIR, exist_ok=True)
 # Ensure storage directories exist in local/dev and container environments.
 os.makedirs(MEDIA_ROOT, exist_ok=True)
 os.makedirs(STATIC_ROOT, exist_ok=True)
+
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+# settings.py mein ye add karein
+CSRF_TRUSTED_ORIGINS = [
+    'https://d2dzhxd4tvvdhn.cloudfront.net',
+]
