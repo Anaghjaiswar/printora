@@ -52,7 +52,8 @@ class PrintShop(models.Model):
     address = models.TextField()
     logo = models.ImageField(upload_to='shop_logos/', null=True, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='open')
-    
+    admin_user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank = True)
+
     opening_time = models.TimeField()
     closing_time = models.TimeField()
     working_days = models.CharField(max_length=100, help_text="e.g., Mon-Fri")

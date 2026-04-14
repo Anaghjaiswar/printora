@@ -10,6 +10,8 @@ from .views import (
     AllOrdersView,
     PhonePeOrderStatusView,
     PhonePeWebhookView,
+    ShopLoginView
+
 )
 
 
@@ -26,4 +28,9 @@ urlpatterns = [
     path('orders/', AllOrdersView.as_view(), name='all-orders'),
     path('payment-status/<str:merchant_order_id>/', PhonePeOrderStatusView.as_view(), name='phonepe-order-status'),
     path('payment/webhook/', PhonePeWebhookView.as_view(), name='phonepe-webhook'),
+
+
+
+    # admin views
+    path('admin/login/', ShopLoginView.as_view(), name="shop-login")
 ]

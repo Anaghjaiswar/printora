@@ -347,3 +347,47 @@ class PhonePeWebhookView(APIView):
                 "reason": "unexpected_error",
                 "message": str(exc),
             }, status=status.HTTP_200_OK)
+
+class ShopLoginView(APIView):
+
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        email = request.data.get('email')
+        password = request.data.get('password')
+        
+        user = authenticate(email=email, password=password)
+        
+        if user:
+            is_staff_user = user.is_staff
+            if is_staff_user:
+
+                shop = PrintShop.objects.get(admin_user=user)
+
+                if not shop:
+                    return Response({
+                        "ok": False,
+                        "message": "No print shop is linked to this admin user.",
+                        "data": ""
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
+                token, created = Token.objects.get_or_create(user=user)
+                return Response({
+                    "ok": True,
+                    "message" : "data fetched successfully.",
+                    "token": token.key,
+                    "user_id": user.pk,
+                    "email": user.email,
+                    "shop": {
+                        "id": shop.id,
+                        "name": shop.name,
+                    }
+                })
+            else:
+                return Response({
+                    "ok" : False,
+                    "message" : "you are not entitled to admin login",
+                    "data" :""
+                })
+        else:
+            return Response({"error": "Invalid Credentials"}, status=status.HTTP_401_UNAUTHORIZED)
