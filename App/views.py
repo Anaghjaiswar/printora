@@ -21,7 +21,7 @@ from .phonepe_service import (
     to_paise,
     validate_callback,
 )
-from .serializers import DocumentSerializer, PrintShopSerializer, ServiceSerializer, UserSerializer
+from .serializers import DocumentSerializer, OrderSerializer, PrintShopSerializer, ServiceSerializer, UserSerializer
 
 
 logger = logging.getLogger(__name__)
@@ -225,6 +225,25 @@ class CreateSdkOrderView(APIView):
 
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class AllOrdersView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        queryset = (
+            Order.objects.filter(user=request.user)
+            .select_related('shop', 'payment')
+            .prefetch_related('documents', 'documents__service')
+            .order_by('-ordered_at')
+        )
+
+        order_status = request.query_params.get('status')
+        if order_status:
+            queryset = queryset.filter(status=order_status)
+
+        serializer = OrderSerializer(queryset, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 class PhonePeOrderStatusView(APIView):

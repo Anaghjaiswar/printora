@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import PrintShop, Service, Document
+from .models import PrintShop, Service, Document, Order
 from pypdf import PdfReader
 import io
 
@@ -80,3 +80,22 @@ class DocumentSerializer(serializers.ModelSerializer):
             page_count=page_count,
             **validated_data
         )
+
+
+class OrderSerializer(serializers.ModelSerializer):
+    documents = DocumentSerializer(many=True, read_only=True)
+    shop_name = serializers.CharField(source='shop.name', read_only=True)
+    payment_status = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Order
+        fields = [
+            'id', 'pickup_token', 'status', 'is_paid', 'total_amount',
+            'ordered_at', 'completed_at', 'shop', 'shop_name',
+            'documents', 'payment_status'
+        ]
+
+    def get_payment_status(self, obj):
+        if hasattr(obj, 'payment') and obj.payment:
+            return obj.payment.status
+        return None
