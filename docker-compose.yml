@@ -19,7 +19,23 @@ services:
   redis:
     image: redis:7-alpine
     restart: always
-    command: redis-server --save 60 1 --loglevel warning
+    command: >
+      sh -c 'if [ -n "$REDIS_PASSWORD" ]; then
+      exec redis-server --save 60 1 --loglevel warning --requirepass "$REDIS_PASSWORD";
+      else
+      exec redis-server --save 60 1 --loglevel warning;
+      fi'
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "if [ -n \"$REDIS_PASSWORD\" ]; then redis-cli -a \"$REDIS_PASSWORD\" ping | grep PONG; else redis-cli ping | grep PONG; fi",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   web:
     build: 

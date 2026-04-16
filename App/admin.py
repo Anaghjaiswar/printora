@@ -117,6 +117,16 @@ class DocumentAdmin(admin.ModelAdmin):
     list_filter = ('color_mode', 'sides', 'paper_size')
     readonly_fields = ('created_at',)
 
+@admin.register(Order)
+class OrderAdmin(admin.ModelAdmin):
+    list_display = ('pickup_token', 'user', 'shop', 'status', 'is_paid', 'total_amount', 'ordered_at')
+    list_filter = ('status', 'is_paid', 'shop', 'ordered_at')
+    search_fields = ('pickup_token', 'user__email', 'shop__name', 'payment__merchant_transaction_id')
+    readonly_fields = ('pickup_token', 'ordered_at', 'completed_at')
+    inlines = [DocumentInline, PaymentInline]
+    filter_horizontal = ('documents',)
+    list_select_related = ('user', 'shop')
+
 @admin.register(Payment)
 class PaymentAdmin(admin.ModelAdmin):
     list_display = ('merchant_transaction_id', 'phonepe_order_id', 'order', 'status', 'payment_method', 'amount', 'created_at', 'updated_at')

@@ -47,5 +47,5 @@ COPY --chown=printora_user:printora_user . .
 
 EXPOSE 8000
 
-# Using "core.wsgi" because your project folder is named "core"
-CMD ["sh", "-c", "python manage.py migrate --noinput && python manage.py collectstatic --noinput && gunicorn --workers 3 --bind 0.0.0.0:8000 core.wsgi:application"]
+# Serve the project with ASGI via Gunicorn and Uvicorn workers.
+CMD ["sh", "-c", "python manage.py migrate --noinput && python manage.py collectstatic --noinput && gunicorn core.asgi:application -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 --workers ${GUNICORN_WORKERS:-3} --timeout ${GUNICORN_TIMEOUT:-120}"]

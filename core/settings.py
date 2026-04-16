@@ -19,6 +19,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'corsheaders',
+    'channels',
     'rest_framework',
     'rest_framework.authtoken',
     'App'
@@ -115,6 +116,20 @@ ASGI_APPLICATION = 'core.asgi.application'
 REDIS_HOST = os.environ.get('REDIS_HOST', 'redis')
 REDIS_PORT = os.environ.get('REDIS_PORT', '6379')
 REDIS_PASSWORD = os.environ.get('REDIS_PASSWORD')
+REDIS_URL = os.environ.get('REDIS_URL')
+
+if not REDIS_URL:
+    redis_auth = f':{REDIS_PASSWORD}@' if REDIS_PASSWORD else ''
+    REDIS_URL = f'redis://{redis_auth}{REDIS_HOST}:{REDIS_PORT}/0'
+
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            'hosts': [REDIS_URL],
+        },
+    },
+}
 
 # ===================== REST FRAMEWORK CONFIGURATION =====================
 REST_FRAMEWORK = {

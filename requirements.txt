@@ -1,9 +1,13 @@
 django>=4.2,<5.0
 djangorestframework
+channels>=4.0,<5.0
+channels-redis>=4.2,<5.0
+daphne>=4.1,<5.0
 django-cors-headers
 psycopg2-binary
 redis
 gunicorn
+uvicorn
 whitenoise
 python-dotenv
 razorpay

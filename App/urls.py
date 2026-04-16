@@ -7,11 +7,11 @@ from .views import (
     ServiceViewSet,
     DocumentUploadView,
     CreateSdkOrderView,
-    AllOrdersView,
+    MyOrdersView,
+    ShopOrdersView,
     PhonePeOrderStatusView,
     PhonePeWebhookView,
-    ShopLoginView
-
+    ShopLoginView,
 )
 
 
@@ -25,12 +25,13 @@ urlpatterns = [
     path('services/', ServiceViewSet.as_view({'get': 'list'}), name='service-list'),
     path('upload/', DocumentUploadView.as_view(), name='document-upload'),
     path('create-sdk-order/', CreateSdkOrderView.as_view(), name='create-sdk-order'),
-    path('orders/', AllOrdersView.as_view(), name='all-orders'),
+    path('orders/', MyOrdersView.as_view(), name='all-orders'),
     path('payment-status/<str:merchant_order_id>/', PhonePeOrderStatusView.as_view(), name='phonepe-order-status'),
     path('payment/webhook/', PhonePeWebhookView.as_view(), name='phonepe-webhook'),
 
 
 
     # admin views
-    path('admin/login/', ShopLoginView.as_view(), name="shop-login")
+    path('admin/login/', ShopLoginView.as_view(), name="shop-login"),
+    path('admin/shop/orders/', ShopOrdersView.as_view(), name='shop-orders'),
 ]

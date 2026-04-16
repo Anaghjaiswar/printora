@@ -2,9 +2,12 @@ import json
 import logging
 import uuid
 from decimal import Decimal
+from datetime import datetime, timedelta
 
 from django.contrib.auth import authenticate
 from django.db import transaction
+from django.utils import timezone
+from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from phonepe.sdk.pg.common.exceptions import PhonePeException #type:ignore
 from rest_framework import permissions, status, viewsets
 from rest_framework.authtoken.models import Token
@@ -22,6 +25,7 @@ from .phonepe_service import (
     validate_callback,
 )
 from .serializers import DocumentSerializer, OrderSerializer, PrintShopSerializer, ServiceSerializer, UserSerializer
+from .utils import broadcast_shop_event, serialize_order_for_shop
 
 
 logger = logging.getLogger(__name__)
@@ -217,6 +221,7 @@ class CreateSdkOrderView(APIView):
                     pickup_token=pickup_token,
                 )
                 order.documents.set(documents)
+                broadcast_shop_event(order.shop_id, 'order.created', serialize_order_for_shop(order))
 
             response_data = _create_payment_for_order(order)
             response_data['total_amount'] = str(total_amount)
@@ -227,7 +232,7 @@ class CreateSdkOrderView(APIView):
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
-class AllOrdersView(APIView):
+class MyOrdersView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
@@ -244,6 +249,90 @@ class AllOrdersView(APIView):
 
         serializer = OrderSerializer(queryset, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+    
+
+# class PersonalOrdersView(APIView):
+#     permission_classes = [permissions.IsAuthenticated]
+
+#     def get(self, request):
+#         queryset = (
+#             Order.objects.filter(user=request.user)
+#             .select_related('shop', 'payment')
+#             .prefetch_related('documents', 'documents__service')
+#             .order_by('-ordered_at')
+#         )
+
+#         order_status = request.query_params.get('status')
+#         if order_status:
+#             queryset = queryset.filter(status=order_status)
+
+#         serializer = OrderSerializer(queryset, many=True)
+#         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+
+class ShopOrdersView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        if request.user.is_superuser:
+            shop_id = request.query_params.get('shop_id')
+            if not shop_id:
+                return Response({"error": "shop_id is required for superusers"}, status=status.HTTP_400_BAD_REQUEST)
+            shop = PrintShop.objects.filter(id=shop_id).first()
+        else:
+            shop = PrintShop.objects.filter(admin_user=request.user).order_by('id').first()
+
+        if not shop:
+            return Response({"error": "No print shop is linked to this admin user"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Filter for today's orders only
+        today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        today_end = today_start + timedelta(days=1)
+
+        queryset = (
+            Order.objects.filter(
+                shop=shop,
+                ordered_at__gte=today_start,
+                ordered_at__lt=today_end
+            )
+            .select_related('user', 'shop', 'payment')
+            .prefetch_related('documents', 'documents__service')
+            .order_by('-ordered_at')
+        )
+
+        order_status = request.query_params.get('status')
+        if order_status:
+            queryset = queryset.filter(status=order_status)
+
+        # Get total count before pagination
+        total_count = queryset.count()
+
+        # Pagination: 20 items per page
+        page_number = request.query_params.get('page', 1)
+        paginator = Paginator(queryset, 20)
+        
+        try:
+            paginated_orders = paginator.page(page_number)
+        except (EmptyPage, PageNotAnInteger):
+            paginated_orders = paginator.page(1)
+
+        serializer = OrderSerializer(paginated_orders.object_list, many=True)
+        return Response({
+            'shop': {
+                'id': shop.id,
+                'name': shop.name,
+            },
+            'pagination': {
+                'total_count': total_count,
+                'page': paginated_orders.number,
+                'page_size': 20,
+                'total_pages': paginator.num_pages,
+            },
+            'orders': serializer.data,
+        }, status=status.HTTP_200_OK)
 
 
 class PhonePeOrderStatusView(APIView):
@@ -312,6 +401,7 @@ class PhonePeWebhookView(APIView):
                     payment.status = 'FAILED'
 
                 payment.save(update_fields=['phonepe_order_id', 'phonepe_transaction_id', 'status', 'updated_at'])
+                broadcast_shop_event(payment.order.shop_id, 'order.payment.updated', serialize_order_for_shop(payment.order))
 
             return Response({
                 'status': 'received',
@@ -361,8 +451,7 @@ class ShopLoginView(APIView):
         if user:
             is_staff_user = user.is_staff
             if is_staff_user:
-
-                shop = PrintShop.objects.get(admin_user=user)
+                shop = PrintShop.objects.filter(admin_user=user).order_by('id').first()
 
                 if not shop:
                     return Response({
